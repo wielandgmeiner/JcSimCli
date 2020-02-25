@@ -1,5 +1,11 @@
 #!/bin/bash
 
+JAR=../../../build/libs/JcSimCli-1.0-SNAPSHOT-all.jar
+PORT=6666
+AID=01020304050607080901
+CLASS=fr.bmartel.helloworld.HelloWorld
+URL="file:///home/wieland/Work/tech/java/javacard/javacard-tutorial/jc101-hello-world/build/classes/main/"
+
 # CLA INS P1 P2
 INS_INPUT_BYTES=00a40000
 # INS SW1 SW2
@@ -11,7 +17,7 @@ SHA256_INPUT_BYTES=004200000e48656c6c6f20537065637465722120
 SHA256_OUTPUT_BYTES=a742085d2e645b66d09b7fee4ce9023e007c7c6b46ee7f1ba04efddf5ead5ed19000
 
 # read APDU commands from stdin
-java -jar ../../../build/libs/JcSimCli-1.0-SNAPSHOT-all.jar <<EOF
+java -jar $JAR -p $PORT -a $AID -c $CLASS -u $URL <<EOF
 $INS_INPUT_BYTES
 $SHA256_INPUT_BYTES
 

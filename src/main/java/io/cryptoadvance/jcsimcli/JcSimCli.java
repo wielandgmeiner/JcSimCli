@@ -16,7 +16,6 @@ import java.util.Scanner;
 public class JcSimCli {
 
     // TODO
-    // - provide constants as cmd line parameters (see apache lib)
     // - alternatively read bytes directly from socket
     // - go through error handling -> robustness
     // - remove Debug stuff
@@ -24,23 +23,23 @@ public class JcSimCli {
 
     private static CardSimulator simulator;
 
-    // FIXME those guys should be commandline parameters
-    private static final String APPLET_AID = "01020304050607080901";
-    private static final String APPLET_CLASS = "fr.bmartel.helloworld.HelloWorld";
-    private static final String APPLET_URL
-            = "file:///home/wieland/Work/tech/java/javacard/javacard-tutorial/jc101-hello-world/build/classes/main/";
+    private static String APPLET_AID;
+    private static String APPLET_CLASS;
+    private static String APPLET_URL;
+    private static String PORT;
 
     public static void main(String[] args) {
 
         try {
 
             processCliArgs(args);
-            System.exit(0);
 
             setupAPDU();
 
             processAPDU();
 
+        } catch (ParseException pe) {
+            System.err.println("Error parsing command line: " + pe.getMessage());
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -85,12 +84,12 @@ public class JcSimCli {
         URL[] classLoaderUrls = new URL[] { new URL(APPLET_URL) };
         URLClassLoader urlClassLoader = new URLClassLoader(classLoaderUrls);
 
-        URL[] urls = urlClassLoader.getURLs();
-        for (URL url : urls) {
-            System.out.println("URL class loader paths:");
-            System.out.println(url.getFile());
-            System.out.println("URL class loader paths end.");
-        }
+//        URL[] urls = urlClassLoader.getURLs();
+//        for (URL url : urls) {
+//            System.out.println("URL class loader paths:");
+//            System.out.println(url.getFile());
+//            System.out.println("URL class loader paths end.");
+//        }
 
         Class<? extends Applet> appletClass = (Class<? extends Applet>) urlClassLoader.loadClass(APPLET_CLASS);
         simulator.installApplet(aid, appletClass);
@@ -111,38 +110,76 @@ public class JcSimCli {
         return data;
     }
 
-    private static void processCliArgs(String[] args) throws ParseException {
-        Options options = new Options();
+    private static String byteArrayToHexString(byte[] ba) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : ba) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
 
-        Option help = new Option("h", "help", false, "print this message" );
+    private static void processCliArgs(String[] args) throws ParseException {
+        Option help = Option.builder("h")
+                .required(false)
+                .longOpt("help")
+                .desc("Print this message.")
+                .hasArg(false)
+                .build();
         Option port = Option.builder("p")
                 .required(false)
                 .longOpt("port")
-                .desc("port number where JcSimCli will listen")
+                .desc("Port number where JcSimCli will listen.")
                 .hasArg()
                 .build();
         Option aid = Option.builder("a")
-                .required(false)
+                .required(true)
                 .longOpt("applet-aid")
-                .desc("AID of the applet to use in the simulator")
+                .desc("AID of the applet to use in the simulator.")
+                .hasArg()
+                .build();
+        Option aClass = Option.builder("c")
+                .required(true)
+                .longOpt("applet-class")
+                .desc("Applet class to be loaded into the simulator.")
+                .hasArg()
+                .build();
+        Option url = Option.builder("u")
+                .required(true)
+                .longOpt("applet-url")
+                .desc("Path to the applet in the file system.")
                 .hasArg()
                 .build();
 
-        options.addOption(help);
-        options.addOption(port);
-        options.addOption(aid);
+        Options allOptions = new Options();
+        allOptions.addOption(help);
+        allOptions.addOption(port);
+        allOptions.addOption(aid);
+        allOptions.addOption(aClass);
+        allOptions.addOption(url);
+
+        // the --help option contradicts with the required options, so a call with only --help
+        // throws an exception because the required args are missing. This is a workaround. The commandline
+        // is parsed twice and checked for a --help option first.
+        // this is pretty unbelievable that there is no sane solution for this extremely common problem in a
+        // library that old and widely used. FIXME use other better lib
+        try {
+            Options helpOption = new Options();
+            helpOption.addOption(help);
+            CommandLineParser parser = new DefaultParser();
+            CommandLine cmd = parser.parse(helpOption, args);
+            if (cmd.hasOption("help")) {
+                HelpFormatter formatter = new HelpFormatter();
+                formatter.printHelp( "java -jar path/to/JcSimCli-{$version}-all.jar <options>", allOptions );
+                System.exit(0);
+            }
+        } catch (ParseException e) { /* other options present, proceed with another parse */ }
 
         CommandLineParser parser = new DefaultParser();
-        CommandLine cmd = parser.parse(options, args);
+        CommandLine cmd = parser.parse(allOptions, args);
 
-        if (cmd.hasOption("help")) {
-            HelpFormatter formatter = new HelpFormatter();
-            formatter.printHelp( "java -jar path/to/JcSimCli-{$version}-all.jar <options>", options );
-            System.exit(0);
-        }
         if (cmd.hasOption("port")) {
             String portNumber = cmd.getOptionValue("port");
-            System.out.println("Port: " + portNumber);
+            PORT = portNumber;
             // use  in socket
         } else {
             System.out.println("Stdin is it baby");
@@ -150,15 +187,15 @@ public class JcSimCli {
         }
         if (cmd.hasOption("applet-aid")) {
             String appletAID = cmd.getOptionValue("applet-aid");
-            System.out.println("Applet AID: " + appletAID);
+            APPLET_AID = appletAID;
         }
-    }
-
-    private static String byteArrayToHexString(byte[] ba) {
-        StringBuilder sb = new StringBuilder();
-        for (byte b : ba) {
-            sb.append(String.format("%02x", b));
+        if (cmd.hasOption("applet-class")) {
+            String appletClass = cmd.getOptionValue("applet-class");
+            APPLET_CLASS = appletClass;
         }
-        return sb.toString();
+        if (cmd.hasOption("applet-url")) {
+            String appletUrl = cmd.getOptionValue("applet-url");
+            APPLET_URL = appletUrl;
+        }
     }
 }
