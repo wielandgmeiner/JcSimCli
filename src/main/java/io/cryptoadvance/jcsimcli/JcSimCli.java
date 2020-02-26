@@ -8,25 +8,24 @@ import org.apache.commons.cli.*;
 
 import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.net.URLClassLoader;
-import java.util.Scanner;
+import java.io.*;
+import java.net.*;
 
 public class JcSimCli {
 
-    // TODO
-    // - alternatively read bytes directly from socket
-    // - go through error handling -> robustness
-    // - remove Debug stuff
-    // - take on github and write a README.md for usage
+    // we assume no longer input than 4096 bytes
+    private static final int INPUT_BUFFER_SIZE = 4096;
+
+    private static String   APPLET_AID;
+    private static String   APPLET_CLASS;
+    private static String   APPLET_URL;
+    private static Integer  PORT;
+
+    private static boolean use_stdin    = false;
+    private static boolean use_hex      = false;
 
     private static CardSimulator simulator;
 
-    private static String APPLET_AID;
-    private static String APPLET_CLASS;
-    private static String APPLET_URL;
-    private static String PORT;
 
     public static void main(String[] args) {
 
@@ -34,23 +33,57 @@ public class JcSimCli {
 
             processCliArgs(args);
 
-            setupAPDU();
+            setupSimulator();
 
-            processAPDU();
+            if (use_hex) {
+                if (use_stdin) {
+                    processStdin();
+                } else {
+                    processSocket();
+                }
+            } else { // use binary
+                processSocketInBinary();
+            }
 
-        } catch (ParseException pe) {
-            System.err.println("Error parsing command line: " + pe.getMessage());
-        } catch (Exception e) {
+        }
+        catch (ParseException e) {
+            System.err.println("Error parsing command line: " + e.getMessage());
+        }
+        catch (IOException e) {
+            System.err.println("Error opening connection: " + e.getMessage());
+        }
+        catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    private static void processAPDU() {
+    private static void processStdin() throws IOException {
 
-        Scanner scanner = new Scanner(System.in);
+        try (
+            BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+            PrintWriter out = new PrintWriter(System.out, true);
+        ) {
+            processAPDU(in, out);
+        }
+    }
+
+    private static void processSocket() throws IOException {
+
+        try (
+                ServerSocket serverSocket = new ServerSocket(PORT);
+                Socket clientSocket = serverSocket.accept();
+                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
+        ) {
+            processAPDU(in, out);
+        }
+    }
+
+    private static void processAPDU(BufferedReader in, PrintWriter out) throws IOException {
+
         String line;
-        while ( ! (line = scanner.nextLine()).isEmpty()) {
-            if (line.length() == 1 && line.equals("\n")) {
+        while ((line = in.readLine()) != null) {
+            if (line.isEmpty()) {
                 break;
             }
             if (line.length() % 2 != 0) {
@@ -58,45 +91,60 @@ public class JcSimCli {
                         + " Please try again");
                 continue;
             }
-            System.out.println("read input string: " + line);
             byte[] buffer = hexStringToByteArray(line);
             System.out.println("input byte buffer: " + byteArrayToHexString(buffer));
 
             try {
                 CommandAPDU commandAPDU = new CommandAPDU(buffer);
                 ResponseAPDU response = simulator.transmitCommand(commandAPDU);
-
-                System.out.println(response.toString());
-                System.out.println("response.length: " + response.getBytes().length);
-                System.out.println("response.data: " + byteArrayToHexString(response.getBytes()));
+                out.println(byteArrayToHexString(response.getBytes()));
             } catch (Exception e) {
                 System.err.println("Error in APDU: " + e.getMessage());
-                e.printStackTrace();
             }
         }
     }
 
-    private static void setupAPDU() throws ClassNotFoundException, MalformedURLException {
+    private static void processSocketInBinary() throws IOException {
+
+        try (
+                ServerSocket serverSocket = new ServerSocket(PORT);
+                Socket clientSocket = serverSocket.accept();
+                DataInputStream in = new DataInputStream(new BufferedInputStream(clientSocket.getInputStream()));
+                DataOutputStream out = new DataOutputStream(new BufferedOutputStream(clientSocket.getOutputStream()));
+        ) {
+            byte[] input = new byte[INPUT_BUFFER_SIZE];
+            int len = 0;
+            while ((len = in.read(input)) != -1) { // EOF
+                byte[] buffer = new byte[len];
+                System.arraycopy(input, 0, buffer, 0, len);
+                try {
+                    CommandAPDU commandAPDU = new CommandAPDU(buffer);
+                    ResponseAPDU response = simulator.transmitCommand(commandAPDU);
+                    out.write(response.getBytes());
+                    out.flush();
+                } catch (Exception e) {
+                    System.err.println("Error in APDU: " + e.getMessage());
+                } finally {
+                    // reset the input buffer
+                    input = new byte[INPUT_BUFFER_SIZE];
+                }
+            }
+        }
+    }
+
+    private static void setupSimulator() throws ClassNotFoundException, MalformedURLException {
 
         simulator = new CardSimulator();
         final AID aid = AIDUtil.create(APPLET_AID);
-
         URL[] classLoaderUrls = new URL[] { new URL(APPLET_URL) };
         URLClassLoader urlClassLoader = new URLClassLoader(classLoaderUrls);
-
-//        URL[] urls = urlClassLoader.getURLs();
-//        for (URL url : urls) {
-//            System.out.println("URL class loader paths:");
-//            System.out.println(url.getFile());
-//            System.out.println("URL class loader paths end.");
-//        }
-
         Class<? extends Applet> appletClass = (Class<? extends Applet>) urlClassLoader.loadClass(APPLET_CLASS);
         simulator.installApplet(aid, appletClass);
         simulator.selectApplet(aid);
     }
 
     private static byte[] hexStringToByteArray(String s) {
+
         if (s.length() % 2 != 0) {
             // will throw an exception below, so let's pad with a leading zero
             s = "0" + s;
@@ -111,6 +159,7 @@ public class JcSimCli {
     }
 
     private static String byteArrayToHexString(byte[] ba) {
+
         StringBuilder sb = new StringBuilder();
         for (byte b : ba) {
             sb.append(String.format("%02x", b));
@@ -130,6 +179,12 @@ public class JcSimCli {
                 .longOpt("port")
                 .desc("Port number where JcSimCli will listen.")
                 .hasArg()
+                .build();
+        Option hex = Option.builder("x")
+                .required(false)
+                .longOpt("hex")
+                .desc("Interpret input/output as ascii hex instead of binary (default).")
+                .hasArg(false)
                 .build();
         Option aid = Option.builder("a")
                 .required(true)
@@ -156,6 +211,7 @@ public class JcSimCli {
         allOptions.addOption(aid);
         allOptions.addOption(aClass);
         allOptions.addOption(url);
+        allOptions.addOption(hex);
 
         // the --help option contradicts with the required options, so a call with only --help
         // throws an exception because the required args are missing. This is a workaround. The commandline
@@ -179,11 +235,12 @@ public class JcSimCli {
 
         if (cmd.hasOption("port")) {
             String portNumber = cmd.getOptionValue("port");
-            PORT = portNumber;
-            // use  in socket
+            PORT = Integer.parseInt(portNumber);
         } else {
-            System.out.println("Stdin is it baby");
-            // use stdin
+            use_stdin = true;
+        }
+        if (cmd.hasOption("hex")) {
+            use_hex = true;
         }
         if (cmd.hasOption("applet-aid")) {
             String appletAID = cmd.getOptionValue("applet-aid");
