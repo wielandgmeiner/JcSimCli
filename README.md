@@ -1,4 +1,4 @@
-#JcSimCli
+# JcSimCli
 
 A wrapper for the [jCardSim](https://jcardsim.org/) Javacard Simulator.
 
@@ -24,11 +24,11 @@ There are scripts in the test directory that demonstrate the usage.
 
 Run the gradle `shadowJar` task.
 
-#####Requirements:
+##### Requirements:
 * Java 8
 * JCardSim 3.0.4 or 3.0.5
 
-#####Prerequisites
+##### Prerequisites
 
 Obviously you will need a Javacard Applet class to run against.
 
