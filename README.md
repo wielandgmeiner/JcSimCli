@@ -2,7 +2,7 @@
 
 A wrapper for the [jCardSim](https://jcardsim.org/) Javacard Simulator.
 
-Repackages it's dependencies in an uber-jar. Accepts input either as hex strings (from stdin or socket) or binary (from socket) and returns output in the same format and communicatioin channel.
+Repackages its dependencies in an uber-jar. Accepts input either as hex strings (from stdin or socket) or binary (from socket) and returns output in the same format and communicatioin channel.
 
 ### Usage
 
