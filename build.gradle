@@ -15,18 +15,11 @@ repositories {
 }
 
 dependencies {
-//    implementation('fr.bmartel:gradle-javacard:1.5.6')
-//    testCompile group: 'junit', name: 'junit', version: '4.12'
-//    implementation('com.github.martinpaljak:apdu4j:18.10.04')
-    // https://mvnrepository.com/artifact/commons-cli/commons-cli
     compile group: 'commons-cli', name: 'commons-cli', version: '1.4'
     implementation('com.licel:jcardsim:3.0.4-SNAPSHOT')
     // IMPORTANT: you have to build 3.0.4-SNAPSHOT from source
     // and use the javacard 3.0.5 for it! (and of course jdk 1.8)
     // (we need 3.0.4 because 2.2.2 doesn't have AIDUtil what we need though)
-    // in Github mit subprojekten aufsetzen um einen in sich geschlossenen build zu erreichen
-    // eines mein Klon von jcardsim mit angepasstem pom
-    // das dann die oracle javacard von dem franzosen verwendet
 }
 
 jar {
